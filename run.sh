@@ -17,7 +17,7 @@ RANDOM_INDEX=$((RANDOM % ${#URLS[@]}))
 WALLPAPER_SOURCE_URL=${URLS["$RANDOM_INDEX"]}
 
 # Wallpaper download path
-WALLPAPER_PATH=$(mktemp -t random-wallpaper)
+WALLPAPER_PATH=$(mktemp -t random-wallpaper.XXXXX)
 
 # Get server response status code
 #HTTP_CODE=$(curl --output /dev/null --silent --head --location --write-out "%{http_code}" "$WALLPAPER_SOURCE_URL")
@@ -29,6 +29,11 @@ WALLPAPER_PATH=$(mktemp -t random-wallpaper)
 
 # Check to make sure curl ran successfully
 curl -skLo "$WALLPAPER_PATH" "$WALLPAPER_SOURCE_URL" || exit 1
+
+# Clear old cache
+CACHE_FOLDER=$(find /private/var/folders/ -type d -name 'com.apple.desktoppicture' -print -quit 2>/dev/null)
+
+rm -r "$CACHE_FOLDER"/*.png
 
 # Tell OS X to change the wallpaper
 osascript -e 'tell application "System Events" to tell every desktop to set picture to "'"$WALLPAPER_PATH"'"'
