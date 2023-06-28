@@ -1,7 +1,14 @@
 #!/bin/bash
 # Description: Download and set a random wallpaper
 
-UNSPLASH_CLIENT_ID="UPDATE_THIS_WITH_YOUR_OWN_UNSPLASH_CLIENT_ID"
+# Unsplash API Client ID from .env file
+source "$(dirname "$0")/.env"
+
+# Exit if the client id is not set
+if [[ -z "$UNSPLASH_CLIENT_ID" ]]; then
+	echo "UNSPLASH_CLIENT_ID is not set in .env file"
+	exit 1
+fi
 
 # Unsplash API
 UNSPLASH_BASE_URL="https://api.unsplash.com"
