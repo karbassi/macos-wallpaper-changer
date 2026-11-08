@@ -1,0 +1,91 @@
+[env]
+APP_NAME = "WallpaperChanger"
+BUNDLE_ID = "com.karbassi.WallpaperChanger"
+INSTALL_DIR = "{{env.HOME}}/Applications"
+
+[tasks.icon]
+description = "Regenerate App/AppIcon.icns from App/Icon.swift"
+sources = ["App/Icon.swift"]
+outputs = ["App/AppIcon.icns"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+set_dir=.build/AppIcon.iconset
+rm -rf "$set_dir"
+mkdir -p "$set_dir"
+swift App/Icon.swift .build/icon-1024.png
+for s in 16 32 128 256 512; do
+  sips -z "$s" "$s" .build/icon-1024.png --out "$set_dir/icon_${s}x${s}.png" >/dev/null
+  sips -z "$((s * 2))" "$((s * 2))" .build/icon-1024.png --out "$set_dir/icon_${s}x${s}@2x.png" >/dev/null
+done
+iconutil -c icns "$set_dir" -o App/AppIcon.icns
+echo "Wrote App/AppIcon.icns"
+'''
+
+[tasks.build]
+description = "Build WallpaperChanger.app into .build/"
+depends = ["icon"]
+sources = ["Package.swift", "Sources/**/*.swift", "App/Info.plist", "App/AppIcon.icns"]
+outputs = [".build/WallpaperChanger.app/Contents/MacOS/WallpaperChanger"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+swift build -c release
+app=".build/$APP_NAME.app"
+rm -rf "$app"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+cp "$(swift build -c release --show-bin-path)/$APP_NAME" "$app/Contents/MacOS/"
+cp App/Info.plist "$app/Contents/"
+cp App/AppIcon.icns "$app/Contents/Resources/"
+# Ad-hoc by default; set CODESIGN_IDENTITY to keep Full Disk Access across rebuilds.
+codesign --force --sign "${CODESIGN_IDENTITY:--}" "$app"
+echo "Built $app"
+'''
+
+[tasks.install]
+description = "Install to ~/Applications, retire the old LaunchAgent, and launch"
+depends = ["build"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+dest="$INSTALL_DIR/$APP_NAME.app"
+
+# Retire the old launchd-based changer
+launchctl bootout "gui/$(id -u)/com.karbassi.wallpaper.changer" 2>/dev/null || true
+rm -f "$HOME/Library/LaunchAgents/com.karbassi.wallpaper.changer.plist"
+
+pkill -x "$APP_NAME" && sleep 1 || true
+mkdir -p "$INSTALL_DIR"
+rm -rf "$dest"
+cp -R ".build/$APP_NAME.app" "$dest"
+
+# Seed the Unsplash key from .env if the app doesn't have one yet
+if ! defaults read "$BUNDLE_ID" unsplashClientID >/dev/null 2>&1 && [[ -f .env ]]; then
+  key=$(set -a; . ./.env; echo "${UNSPLASH_CLIENT_ID:-}")
+  [[ -n "$key" ]] && defaults write "$BUNDLE_ID" unsplashClientID "$key"
+fi
+
+open "$dest"
+echo "Installed $dest"
+'''
+
+[tasks.uninstall]
+description = "Quit and remove the app (turn off Open at Login first)"
+run = '''
+#!/usr/bin/env bash
+pkill -x "$APP_NAME" || true
+rm -rf "$INSTALL_DIR/$APP_NAME.app"
+echo "Removed $INSTALL_DIR/$APP_NAME.app"
+'''
+
+[tasks.next]
+description = "Change the wallpaper now (works while the icon is hidden)"
+run = "open wallpaperchanger://next"
+
+[tasks.show]
+description = "Show the menu bar icon again"
+run = "open wallpaperchanger://show"
+
+[tasks.logs]
+description = "Stream the app's logs"
+run = "log stream --style compact --level info --predicate 'subsystem == \"com.karbassi.WallpaperChanger\"'"
